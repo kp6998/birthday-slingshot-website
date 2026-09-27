@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Birthday Slingshot 🎂</title>
+
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#87ceeb}
+body{touch-action:none}
+#stage{position:relative;width:100vw;height:100dvh;overflow:hidden}
+#game{display:block;background:linear-gradient(#78c8f2 0 62%,#8fd35b 62% 100%)}
+#ui{position:absolute;inset:0;pointer-events:none;display:flex;flex-direction:column;align-items:center}
+.title{margin-top:18px;text-align:center;color:#fff;text-shadow:0 3px 5px #365a65;font-weight:900;font-size:clamp(22px,5vw,42px)}
+.hint{margin-top:6px;padding:8px 16px;border-radius:999px;background:#ffffffd9;color:#334;font-weight:700;font-size:clamp(12px,2.5vw,17px)}
+#message{position:absolute;inset:0;display:none;align-items:center;justify-content:center;text-align:center;background:#0008;pointer-events:auto}
+.card{width:min(90%,650px);padding:38px 25px;border-radius:30px;background:linear-gradient(145deg,#fff,#fff5d8);box-shadow:0 20px 70px #0008;animation:pop .65s cubic-bezier(.2,1.5,.4,1)}
+.card .emoji{font-size:60px}
+.card h1{margin:4px 0 10px;font-size:clamp(32px,9vw,72px);line-height:1;color:#ef3d45;text-shadow:2px 3px #ffc94a}
+.card h2{margin:8px 0;font-size:clamp(25px,6vw,45px);color:#543d87}
+.card p{font-size:clamp(15px,3vw,21px);color:#444;margin:15px auto 24px;max-width:510px}
+button{border:0;border-radius:999px;padding:13px 25px;background:#ef3d45;color:#fff;font-size:17px;font-weight:800;cursor:pointer;box-shadow:0 5px 0 #b72830}
+button:active{transform:translateY(3px);box-shadow:0 2px 0 #b72830}
+@keyframes pop{from{transform:scale(.2) rotate(-5deg);opacity:0}to{transform:scale(1) rotate(0);opacity:1}}
+.shake{animation:shake .45s}
+@keyframes shake{0%,100%{transform:translate(0)}20%{transform:translate(-12px,7px)}40%{transform:translate(10px,-7px)}60%{transform:translate(-8px,-5px)}80%{transform:translate(8px,6px)}}
+@media (orientation:portrait) and (max-width:767px){
+  #stage{width:100dvh;height:100vw;transform:translateX(100vw) rotate(90deg);transform-origin:top left}
+}
+</style>
+</head>
+<body>
+<div id="stage">
+<canvas id="game"></canvas>
+<div id="ui">
+  <div class="title">🎂 Birthday Slingshot 🎂</div>
+  <div class="hint" id="hint">Drag the bird backward, aim at the pigs, and release! 🐦</div>
+</div>
+<div id="message">
+  <div class="card">
+    <div class="emoji">🎉 🐷 💥 🐦 🎂</div>
+    <h1>HAPPY BIRTHDAY!</h1>
+    <h2 id="friendName">My Amazing Friend ❤️</h2>
+    <p id="wish">Hope your day is filled with laughter, happiness, cake, and lots of wonderful memories! ✨</p>
+    <button id="again">Play Again 🐦</button>
+  </div>
+</div>
+</div>
+
+<script>
+/* ===========================
+   EASY CUSTOMIZATION
+   =========================== */
+const FRIEND_NAME = "Angry Bird 💙✨";
+const WISH = "Hope your day is filled with laughter, happiness, cake, and lots of wonderful memories! ✨";
+/* =========================== */
+
+const canvas=document.getElementById("game"), ctx=canvas.getContext("2d");
+const stage=document.getElementById("stage");
+const msg=document.getElementById("message"), nameEl=document.getElementById("friendName"), wishEl=document.getElementById("wish");
+nameEl.textContent=FRIEND_NAME; wishEl.textContent=WISH;
+
+let W,H,dpr,scale;
+let bird,pigs=[],blocks=[],particles=[],confetti=[];
+let dragging=false, launched=false, finished=false, last=0, trail=[];
+const gravity=0.42;
+
+function resize(){
+  const portraitPhone=matchMedia("(orientation: portrait) and (max-width: 767px)").matches;
+  dpr=Math.min(devicePixelRatio||1,2); W=portraitPhone?innerHeight:innerWidth; H=portraitPhone?innerWidth:innerHeight;
+  stage.style.width=W+"px";stage.style.height=H+"px";
+  canvas.width=W*dpr; canvas.height=H*dpr; canvas.style.width=W+"px"; canvas.style.height=H+"px";
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  scale=Math.min(W/1100,H/650);
+  reset();
+}
+addEventListener("resize",resize);
+
+function world(){
+  const ground=H*.78, slingX=Math.max(105,W*.19), slingY=ground-95;
+  return {ground,slingX,slingY};
+}
+function reset(){
+  const a=world(); launched=false; finished=false; dragging=false; particles=[];confetti=[];trail=[];
+  bird={x:a.slingX,y:a.slingY,r:25,vx:0,vy:0};
+  pigs=[
+    {x:W*.69,y:a.ground-42,r:30,hit:false},
+    {x:W*.83,y:a.ground-42,r:30,hit:false},
+    {x:W*.76,y:a.ground-145,r:28,hit:false}
+  ];
+  blocks=[
+    {x:W*.66,y:a.ground-82,w:18,h:82,rot:0},
+    {x:W*.86,y:a.ground-82,w:18,h:82,rot:0},
+    {x:W*.755,y:a.ground-182,w:220,h:18,rot:0},
+    {x:W*.73,y:a.ground-260,w:18,h:78,rot:0},
+    {x:W*.82,y:a.ground-260,w:18,h:78,rot:0},
+    {x:W*.775,y:a.ground-305,w:150,h:18,rot:0}
+  ];
+  msg.style.display="none"; canvas.classList.remove("shake");
+  document.getElementById("hint").textContent="Drag the bird backward, aim at the pigs, and release! 🐦";
+}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
+function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
+function pointer(e){
+  const r=canvas.getBoundingClientRect(), p=e.touches?e.touches[0]:e;
+  if(matchMedia("(orientation: portrait) and (max-width: 767px)").matches)
+    return {x:p.clientY-r.top,y:innerWidth-(p.clientX-r.left)};
+  return {x:p.clientX-r.left,y:p.clientY-r.top};
+}
+function start(e){
+  if(launched||finished)return;
+  const p=pointer(e);
+  if(Math.hypot(p.x-bird.x,p.y-bird.y)<45){dragging=true;e.preventDefault()}
+}
+function move(e){
+  if(!dragging)return;
+  const p=pointer(e), a=world(), max=125;
+  let dx=p.x-a.slingX,dy=p.y-a.slingY, len=Math.hypot(dx,dy);
+  if(len>max){dx=dx/len*max;dy=dy/len*max}
+  bird.x=a.slingX+dx; bird.y=a.slingY+dy;e.preventDefault();
+}
+function release(){
+  if(!dragging)return; dragging=false;
+  const a=world(), dx=a.slingX-bird.x,dy=a.slingY-bird.y;
+  if(Math.hypot(dx,dy)<15){bird.x=a.slingX;bird.y=a.slingY;return}
+  bird.vx=dx*.19;bird.vy=dy*.19;launched=true;document.getElementById("hint").textContent="🔥 Direct hit!"; trail=[];
+}
+canvas.addEventListener("mousedown",start); canvas.addEventListener("mousemove",move); addEventListener("mouseup",release);
+canvas.addEventListener("touchstart",start,{passive:false});canvas.addEventListener("touchmove",move,{passive:false});addEventListener("touchend",release);
+
+function circleHit(a,b){return dist(a,b)<a.r+b.r}
+function boom(x,y){
+  for(let i=0;i<65;i++){let ang=Math.random()*Math.PI*2,sp=2+Math.random()*8;
+    particles.push({x,y,vx:Math.cos(ang)*sp,vy:Math.sin(ang)*sp,r:2+Math.random()*6,life:35+Math.random()*35});
+  }
+}
+function win(){
+  if(finished)return; finished=true; launched=false;
+  for(let i=0;i<180;i++)confetti.push({x:W/2,y:H*.35,vx:(Math.random()-.5)*12,vy:-Math.random()*12-3,s:4+Math.random()*7,rot:Math.random()*6});
+  canvas.classList.add("shake");
+  setTimeout(()=>{msg.style.display="flex"},550);
+}
+document.getElementById("again").onclick=()=>{reset()};
+
+function drawSky(){
+  const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,"#63bff0");g.addColorStop(.7,"#b8e7ff");g.addColorStop(1,"#91d05b");
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  // clouds
+  ctx.fillStyle="#ffffffaa";
+  for(const c of [{x:W*.12,y:H*.16,s:1},{x:W*.55,y:H*.12,s:.8},{x:W*.84,y:H*.25,s:.7}]){
+    ctx.beginPath();ctx.arc(c.x,c.y,30*c.s,0,7);ctx.arc(c.x+35*c.s,c.y-12*c.s,38*c.s,0,7);ctx.arc(c.x+72*c.s,c.y,28*c.s,0,7);ctx.fill();
+  }
+}
+function drawGround(){
+  const a=world();ctx.fillStyle="#79bf4e";ctx.fillRect(0,a.ground,W,H-a.ground);
+  ctx.fillStyle="#67aa3e";ctx.fillRect(0,a.ground,W,8);
+  ctx.fillStyle="#5f9d39";for(let x=0;x<W;x+=24)ctx.fillRect(x,a.ground+10+(x%5),3,8);
+}
+function drawSling(){
+  const a=world();
+  ctx.lineCap="round";ctx.strokeStyle="#70401f";ctx.lineWidth=12;
+  ctx.beginPath();ctx.moveTo(a.slingX-20,a.ground+5);ctx.lineTo(a.slingX-10,a.slingY-50);ctx.moveTo(a.slingX+20,a.ground+5);ctx.lineTo(a.slingX+10,a.slingY-50);ctx.stroke();
+  if(!launched){ctx.strokeStyle="#542c18";ctx.lineWidth=6;ctx.beginPath();ctx.moveTo(a.slingX-10,a.slingY-45);ctx.lineTo(bird.x,bird.y);ctx.moveTo(a.slingX+10,a.slingY-45);ctx.lineTo(bird.x,bird.y);ctx.stroke()}
+}
+function drawBird(){
+  ctx.save();ctx.translate(bird.x,bird.y);
+  ctx.fillStyle="#e63332";ctx.beginPath();ctx.arc(0,0,bird.r,0,7);ctx.fill();
+  ctx.fillStyle="#fff";ctx.beginPath();ctx.arc(9,-8,7,0,7);ctx.arc(23,-5,7,0,7);ctx.fill();
+  ctx.fillStyle="#111";ctx.beginPath();ctx.arc(11,-7,3,0,7);ctx.arc(25,-4,3,0,7);ctx.fill();
+  ctx.fillStyle="#f4a51c";ctx.beginPath();ctx.moveTo(22,2);ctx.lineTo(48,8);ctx.lineTo(22,14);ctx.fill();
+  ctx.fillStyle="#222";ctx.beginPath();ctx.moveTo(-13,-22);ctx.lineTo(10,-30);ctx.lineTo(1,-17);ctx.fill();
+  ctx.restore();
+}
+function drawPig(p){
+  if(p.hit)return;ctx.save();ctx.translate(p.x,p.y);
+  ctx.fillStyle="#78c94d";ctx.beginPath();ctx.arc(0,0,p.r,0,7);ctx.fill();
+  ctx.fillStyle="#65ae3f";ctx.beginPath();ctx.arc(-12,-7,7,0,7);ctx.arc(12,-7,7,0,7);ctx.fill();
+  ctx.fillStyle="#fff";ctx.beginPath();ctx.arc(-9,-7,7,0,7);ctx.arc(9,-7,7,0,7);ctx.fill();
+  ctx.fillStyle="#222";ctx.beginPath();ctx.arc(-8,-6,3,0,7);ctx.arc(8,-6,3,0,7);ctx.fill();
+  ctx.fillStyle="#579b38";ctx.beginPath();ctx.ellipse(0,9,13,9,0,0,7);ctx.fill();
+  ctx.fillStyle="#222";ctx.beginPath();ctx.arc(-5,9,2,0,7);ctx.arc(5,9,2,0,7);ctx.fill();ctx.restore();
+}
+function drawBlocks(){
+  for(const b of blocks){ctx.save();ctx.translate(b.x,b.y);ctx.rotate(b.rot);ctx.fillStyle="#d28a46";ctx.strokeStyle="#8d562c";ctx.lineWidth=3;ctx.fillRect(-b.w/2,-b.h/2,b.w,b.h);ctx.strokeRect(-b.w/2,-b.h/2,b.w,b.h);ctx.restore()}
+}
+function drawAim(){
+  if(!dragging)return;
+  const a=world();let x=a.slingX,y=a.slingY,vx=(a.slingX-bird.x)*.19,vy=(a.slingY-bird.y)*.19;
+  for(let frame=1;frame<=48;frame++){
+    vy+=gravity;x+=vx;y+=vy;vx*=.999;vy*=.999;
+    if(frame%2)continue;
+    ctx.beginPath();ctx.arc(x,y,4,0,Math.PI*2);ctx.fillStyle="#fff15c";ctx.fill();ctx.strokeStyle="#68451d";ctx.lineWidth=1.5;ctx.stroke();
+  }
+}
+function update(dt){
+  if(launched&&!finished){
+    bird.vy+=gravity*dt;bird.x+=bird.vx*dt;bird.y+=bird.vy*dt;bird.vx*=.999;bird.vy*=.999;trail.push({x:bird.x,y:bird.y});if(trail.length>18)trail.shift();
+    for(const p of pigs){if(!p.hit&&circleHit(bird,p)){p.hit=true;boom(p.x,p.y);bird.vx*=.72;bird.vy*=.72}}
+    for(const b of blocks){if(b.w>0&&bird.x>b.x-b.w/2-bird.r&&bird.x<b.x+b.w/2+bird.r&&bird.y>b.y-b.h/2-bird.r&&bird.y<b.y+b.h/2+bird.r){boom(bird.x,bird.y);b.w*=.35;b.h*=.35;bird.vx*=.55;bird.vy*=-.5}}
+    const a=world();if(bird.y>a.ground+100||bird.x>W+100||bird.x<-100){launched=false;bird.x=a.slingX;bird.y=a.slingY;bird.vx=bird.vy=0;document.getElementById("hint").textContent="Try again — pull farther back! 💥"}
+    if(pigs.every(p=>p.hit))win();
+  }
+  particles.forEach(p=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=.2*dt;p.life-=dt});particles=particles.filter(p=>p.life>0);
+  confetti.forEach(c=>{c.x+=c.vx*dt;c.y+=c.vy*dt;c.vy+=.3*dt;c.rot+=.1*dt});
+}
+function render(){
+  drawSky();drawGround();drawBlocks();drawSling();
+  for(const p of trail){ctx.globalAlpha=.25;ctx.fillStyle="#d33";ctx.beginPath();ctx.arc(p.x,p.y,5,0,7);ctx.fill()}ctx.globalAlpha=1;
+  drawAim();pigs.forEach(drawPig);drawBird();
+  particles.forEach(p=>{ctx.globalAlpha=Math.max(0,p.life/60);ctx.fillStyle="#ffb300";ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,7);ctx.fill()});ctx.globalAlpha=1;
+  confetti.forEach(c=>{ctx.save();ctx.translate(c.x,c.y);ctx.rotate(c.rot);ctx.fillStyle=["#ef3d45","#ffd447","#4da6ff","#66c95b","#9b59b6"][Math.floor(c.x+c.y)%5];ctx.fillRect(-c.s/2,-c.s/2,c.s,c.s*1.8);ctx.restore()});
+}
+function loop(t){let dt=Math.min(2,(t-last)/16.67||1);last=t;update(dt);render();requestAnimationFrame(loop)}
+resize();requestAnimationFrame(loop);
+</script>
+</body>
+</html>
