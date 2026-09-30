@@ -43,7 +43,7 @@ button:active{transform:translateY(3px);box-shadow:0 2px 0 #b72830}
 </div>
 <div id="message">
   <div class="card">
-    <img class="card-image" src="ab.jpeg" alt="Colorful birthday balloons and confetti">
+    <img class="card-image" src="ab.jpeg" alt="With Angry Bird" />
     <div class="card-copy">
       <!-- <div class="emoji">🎉 🐷 💥 🐦 🎂</div> -->
       <h1>HAPPY BIRTHDAY!</h1>
@@ -72,13 +72,28 @@ nameEl.textContent=FRIEND_NAME; wishEl.textContent=WISH;
 let W,H,dpr,scale;
 let bird,pigs=[],blocks=[],particles=[],confetti=[];
 let dragging=false, launched=false, finished=false, last=0, trail=[];
+let musicFadeFrame;
 const gravity=0.42;
 
 function playBirthdayMusic(){
+  stopMusic();
   birthdayMusic.currentTime=0;
+  birthdayMusic.volume=0.5;
   birthdayMusic.play().catch(()=>{});
+  const fadeStarted=performance.now();
+  const fadeVolume=now=>{
+    const progress=Math.min((now-fadeStarted)/3000,1);
+    birthdayMusic.volume=0.5+progress*0.5;
+    if(progress<1)musicFadeFrame=requestAnimationFrame(fadeVolume);
+    else musicFadeFrame=null;
+  };
+  musicFadeFrame=requestAnimationFrame(fadeVolume);
 }
-function stopMusic(){birthdayMusic.pause();birthdayMusic.currentTime=0}
+function stopMusic(){
+  if(musicFadeFrame)cancelAnimationFrame(musicFadeFrame);
+  musicFadeFrame=null;
+  birthdayMusic.pause();birthdayMusic.currentTime=0;
+}
 function resize(){
   const portraitPhone=matchMedia("(orientation: portrait) and (max-width: 767px)").matches;
   dpr=Math.min(devicePixelRatio||1,2); W=portraitPhone?innerHeight:innerWidth; H=portraitPhone?innerWidth:innerHeight;
